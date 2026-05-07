@@ -1,0 +1,160 @@
+================================================================
+  PHASE 2 — STUDY NOTES
+  NestJS + PostgreSQL + Prisma — real industry stack
+================================================================
+
+
+----------------------------------------------------------------
+  WHAT EACH FILE DOES
+----------------------------------------------------------------
+
+  docker-compose.yml    → Runs PostgreSQL in a container
+  prisma/schema.prisma  → Defines the User table structure
+  prisma.config.ts      → Tells Prisma where the database is
+  prisma.service.ts     → Connects NestJS to the database
+  users.service.ts      → Business logic using Prisma
+  users.controller.ts   → HTTP endpoints (GET, POST, PATCH, DELETE)
+  create-user.dto.ts    → Shape of incoming request data
+
+
+----------------------------------------------------------------
+  DOCKER — WHY IT MATTERS
+----------------------------------------------------------------
+
+Docker runs PostgreSQL in a container — an isolated environment
+that works the same on every machine. No installing Postgres
+manually, no "it works on my machine" problems.
+
+  docker-compose up -d   # start container in background
+  docker ps              # verify it's running
+  docker-compose down    # stop container
+
+  Analogy: A container is like a lunchbox — everything the
+  database needs is packed inside. Give the lunchbox to any
+  machine and it works exactly the same.
+
+
+----------------------------------------------------------------
+  PRISMA — WHAT IT IS AND WHY
+----------------------------------------------------------------
+
+Prisma is an ORM (Object Relational Mapper). Instead of writing
+raw SQL, you write TypeScript and Prisma translates it to SQL
+for you. It also generates a fully-typed client based on your
+schema so TypeScript knows the exact shape of your data.
+
+  // instead of: SELECT * FROM users WHERE id = 1
+  this.prisma.user.findUnique({ where: { id: 1 } })
+
+  npx prisma migrate dev --name init  # create table in DB
+  npx prisma generate                 # generate TS client
+  npx prisma studio                   # visual DB browser
+
+
+----------------------------------------------------------------
+  SCHEMA → MIGRATION → TABLE
+----------------------------------------------------------------
+
+You define the shape of your data in schema.prisma. When you
+run a migration, Prisma creates the actual table in PostgreSQL.
+Think of the schema as a blueprint and the migration as
+actually building the house.
+
+  model User {
+    id        Int      @id @default(autoincrement())
+    name      String
+    email     String   @unique
+    createdAt DateTime @default(now())
+  }
+
+  @id               → primary key
+  @unique           → no duplicate values allowed
+  @default(now())   → auto timestamp on creation
+
+
+----------------------------------------------------------------
+  DTO — DATA TRANSFER OBJECT
+----------------------------------------------------------------
+
+A DTO defines the shape of data coming in from a request.
+It's like your Phase 1 User interface but specifically for
+what the client sends to the API.
+
+  export class CreateUserDto {
+    name!: string;   // the ! tells TS it will be assigned
+    email!: string;
+  }
+
+UpdateUserDto extends CreateUserDto with all fields optional
+via PartialType — so you can update just the name without
+sending the email.
+
+
+----------------------------------------------------------------
+  NESTJS DECORATORS MAPPED OUT
+----------------------------------------------------------------
+
+  @Controller('users')  // base route: /users
+    @Post()             // POST   /users
+    @Get()              // GET    /users
+    @Get(':id')         // GET    /users/1
+    @Patch(':id')       // PATCH  /users/1
+    @Delete(':id')      // DELETE /users/1
+
+  @Body()       // grabs JSON from the request body
+  @Param('id')  // grabs :id from the URL
+
+
+----------------------------------------------------------------
+  THE MODULE — NESTJS'S WIRING SYSTEM
+----------------------------------------------------------------
+
+In Phase 1 you manually wrote new UserService() and injected
+it. In NestJS the Module does this automatically. You register
+controllers and providers, and NestJS handles the rest.
+
+  @Module({
+    imports: [PrismaModule],        // bring in dependencies
+    controllers: [UsersController],
+    providers: [UsersService],
+  })
+
+  Analogy: The Module is the restaurant manager — assigns
+  which waiters (controllers) work with which kitchen
+  (services) so you don't have to coordinate it yourself
+  every day.
+
+
+----------------------------------------------------------------
+  FULL REQUEST FLOW — END TO END
+----------------------------------------------------------------
+
+  Thunder Client
+    → Controller
+    → Service
+    → PrismaService
+    → PostgreSQL
+    → PrismaService
+    → Service
+    → Controller
+    → 201 Created
+
+  Same relay race as Phase 1 — just now the service calls a
+  real database instead of an in-memory array. The controller
+  still doesn't know or care where data comes from.
+
+
+----------------------------------------------------------------
+  CONFIGMODULE — LOADING .ENV PROPERLY
+----------------------------------------------------------------
+
+process.env.DATABASE_URL is undefined if the .env file isn't
+loaded first. ConfigModule.forRoot({ isGlobal: true }) in
+AppModule loads it before anything else runs — so PrismaService
+always gets the connection string it needs.
+
+  Analogy: Like making sure the chef gets the recipe before
+  the kitchen opens — not after the first order comes in.
+
+
+================================================================
