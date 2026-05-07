@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -17,20 +17,24 @@ export class UsersService {
     return this.prisma.user.findMany();
   }
 
-  findOne(id: number) {
-    return this.prisma.user.findUnique({
+  async findOne(id: number) {
+    const user = await this.prisma.user.findUnique({
       where: { id },
     });
+    if (!user) throw new NotFoundException(`User with id ${id} not found`);
+    return user;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
+  async update(id: number, updateUserDto: UpdateUserDto) {
+    await this.findOne(id); // reuse findOne — it already throws 404 if not found
     return this.prisma.user.update({
       where: { id },
       data: updateUserDto,
     });
   }
 
-  remove(id: number) {
+  async remove(id: number) {
+    await this.findOne(id); // same here
     return this.prisma.user.delete({
       where: { id },
     });
