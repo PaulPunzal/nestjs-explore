@@ -1,0 +1,165 @@
+================================================================
+  PHASE 3 — STUDY NOTES
+  Validation, error handling, and unit testing
+================================================================
+
+
+----------------------------------------------------------------
+  VALIDATION — WHY IT MATTERS
+----------------------------------------------------------------
+
+Without validation your API accepts anything — empty names,
+fake emails, random fields. Validation rejects bad data before
+it ever reaches your service or database.
+
+  npm install class-validator class-transformer
+
+Enable it globally in main.ts once — it applies to every
+endpoint automatically.
+
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,            // strips unknown fields silently
+    forbidNonWhitelisted: true, // rejects if unknown fields sent
+  }));
+
+
+----------------------------------------------------------------
+  VALIDATION DECORATORS ON DTOs
+----------------------------------------------------------------
+
+Decorators from class-validator define the rules. NestJS checks
+them automatically on every incoming request.
+
+  @IsString()
+  @IsNotEmpty()   // cannot be empty string
+  name!: string;
+
+  @IsEmail()      // must be valid email format
+  @IsNotEmpty()
+  email!: string;
+
+Bad data → 400 Bad Request with a clear error message.
+Good data passes through to the service.
+
+
+----------------------------------------------------------------
+  ERROR HANDLING — NOTFOUNDEXCEPTION
+----------------------------------------------------------------
+
+Without error handling, Prisma throws a raw ugly 500 Internal
+Server Error when a record isn't found. We handle it gracefully
+with NestJS's built-in exceptions.
+
+  async findOne(id: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+    if (!user) throw new NotFoundException(
+      `User with id ${id} not found`
+    );
+    return user;
+  }
+
+NotFoundException automatically returns a 404 with a clean
+message. No manual status code setting needed — NestJS handles
+it.
+
+  Smart reuse: update and remove call findOne first — so they
+  get the 404 for free without duplicating the logic. One
+  method, one job — and others reuse it.
+
+
+----------------------------------------------------------------
+  ASYNC/AWAIT — WHY IT'S NEEDED
+----------------------------------------------------------------
+
+Database calls take time. Without await, you'd get a Promise
+object back instead of the actual data. With it, your code
+waits for the result before continuing.
+
+  // ❌ without await — gets a Promise, not the user
+  const user = this.prisma.user.findUnique(...);
+
+  // ✅ with await — gets the actual user object
+  const user = await this.prisma.user.findUnique(...);
+
+Any function that uses await must be marked async. This is
+different from Phase 1's synchronous code — database calls are
+async because they depend on external systems.
+
+
+----------------------------------------------------------------
+  UNIT TESTING — WHAT IT IS
+----------------------------------------------------------------
+
+A unit test checks that ONE SMALL PIECE OF CODE WORKS
+CORRECTLY IN ISOLATION — without touching the real database,
+network, or anything external.
+
+  Analogy: Like testing a car's brakes in a garage — you don't
+  need to drive on a real road to know if the brakes work. You
+  isolate the component and test it directly.
+
+  Real code:  UsersService → PrismaService → PostgreSQL
+  Unit test:  UsersService → FakePrismaService (returns fake data)
+
+
+----------------------------------------------------------------
+  THE AAA PATTERN — EVERY TEST FOLLOWS THIS
+----------------------------------------------------------------
+
+  // Arrange — set up data and mocks
+  mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+  // Act — call the function being tested
+  // Assert — check the result
+  await expect(service.findOne(999))
+    .rejects.toThrow(NotFoundException);
+
+  A = Arrange  →  set up the fake data and mocks
+  A = Act      →  call the function you're testing
+  A = Assert   →  check the result is what you expected
+
+
+----------------------------------------------------------------
+  JEST — THE TESTING TOOLKIT
+----------------------------------------------------------------
+
+  describe()           → groups related tests (like a folder)
+  it()                 → one single test case, reads like a sentence
+  jest.fn()            → creates a fake function you can control
+  mockResolvedValue()  → tells the fake what to return when called
+  expect()             → the assertion, checks result matches expectation
+  jest.clearAllMocks() → resets fakes before each test so they
+                         don't bleed into each other
+
+
+----------------------------------------------------------------
+  WHY TESTS MATTER IN INDUSTRY
+----------------------------------------------------------------
+
+  // Without tests:
+  change code → manually test → hope nothing broke
+  → deploy → users find the bug 😬
+
+  // With tests:
+  change code → npm run test
+  → test fails immediately → fix before deploy ✅
+
+A REGRESSION is when a new change accidentally breaks old
+functionality. Tests catch regressions automatically — that's
+their main job in real teams.
+
+
+----------------------------------------------------------------
+  HTTP STATUS CODES — WHAT YOU USED
+----------------------------------------------------------------
+
+  200 OK            → Success (GET, PATCH, DELETE)
+  201 Created       → Created successfully (POST)
+  400 Bad Request   → Invalid input (validation fails)
+  404 Not Found     → Resource missing (user doesn't exist)
+  500 Server Error  → Something crashed (unhandled error)
+
+
+================================================================
