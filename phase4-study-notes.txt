@@ -1,0 +1,229 @@
+================================================================
+  PHASE 4 — STUDY NOTES
+  Docker + CI/CD + Deployment
+================================================================
+
+
+----------------------------------------------------------------
+  DOCKERFILE — PACKAGING YOUR APP
+----------------------------------------------------------------
+
+A Dockerfile is a recipe that tells Docker how to build your
+app into a container image. We used a MULTI-STAGE BUILD to
+keep the final image lean and clean.
+
+  Stage 1 (builder):
+  - Starts from lightweight Node.js image
+  - Installs ALL dependencies (including dev)
+  - Generates Prisma client
+  - Compiles TypeScript → JavaScript (dist/)
+
+  Stage 2 (production):
+  - Fresh lightweight image — no leftover build tools
+  - Only installs production dependencies (smaller image)
+  - Copies compiled dist/ from Stage 1
+  - Starts the app with: node dist/src/main.js
+
+  Why two stages? The final image has NO TypeScript compiler,
+  NO dev tools, NO test files. Smaller, faster, more secure.
+
+  Analogy: Like cooking a meal (Stage 1) then only plating
+  the food (Stage 2) — you don't serve the dirty pots too.
+
+
+----------------------------------------------------------------
+  DOCKER COMPOSE — RUNNING THE FULL STACK
+----------------------------------------------------------------
+
+docker-compose.yml wires your app + database together so
+everything runs with one command.
+
+  services:
+    db:    → PostgreSQL container
+    app:   → Your NestJS container
+
+  Key concepts:
+
+  healthcheck — makes sure PostgreSQL is actually ready before
+  the app starts. Without it, the app crashes because it tries
+  to connect before the DB is accepting connections.
+
+  depends_on: condition: service_healthy — app waits for DB
+  healthcheck to pass before starting.
+
+  DATABASE_URL: ...@db:5432 — inside Docker, containers talk
+  to each other by SERVICE NAME, not localhost. "db" is the
+  service name of the PostgreSQL container.
+
+  volumes: pgdata — saves your data even if the container
+  stops. Without this, data disappears on every restart.
+
+  Commands:
+    docker-compose up --build  → build and start everything
+    docker-compose up -d       → start in background
+    docker-compose down        → stop everything
+    docker-compose down -v     → stop and delete volumes
+
+
+----------------------------------------------------------------
+  .DOCKERIGNORE — KEEPING IMAGES SMALL
+----------------------------------------------------------------
+
+Like .gitignore but for Docker. Prevents unnecessary files
+from being copied into the image — making builds faster.
+
+  node_modules   → Docker installs these fresh
+  dist           → Docker builds these fresh
+  .env           → never put secrets in images
+  *.spec.ts      → no test files in production
+  README.md      → not needed in production
+
+
+----------------------------------------------------------------
+  PRISMA IN DOCKER — KEY LESSONS
+----------------------------------------------------------------
+
+Prisma 7 requires special handling in Docker:
+
+1. Run npx prisma generate BEFORE npm run build — the build
+   needs the generated client to compile successfully.
+
+2. Pass a dummy DATABASE_URL during generate — prisma generate
+   needs the URL even though it doesn't connect to the DB.
+   DATABASE_URL="..." npx prisma generate
+
+3. Copy node_modules/.prisma to production stage — the
+   generated client lives here and must be copied.
+
+4. Run migrations separately after deploy:
+   npx prisma migrate deploy
+   This applies existing migrations to the production DB.
+   Never use migrate dev in production.
+
+  migrate dev    → for local development (creates new migrations)
+  migrate deploy → for production (applies existing migrations)
+
+
+----------------------------------------------------------------
+  GITHUB ACTIONS — CI/CD PIPELINE
+----------------------------------------------------------------
+
+CI = Continuous Integration → automatically test every push
+CD = Continuous Deployment  → automatically deploy if tests pass
+
+Your pipeline in .github/workflows/ci.yml runs on every push
+to main and every pull request.
+
+  Two jobs run in sequence:
+
+  test job:
+  - Spins up a real PostgreSQL container (services:)
+  - Installs dependencies
+  - Generates Prisma client
+  - Runs migrations
+  - Runs npm run test (your 10 unit tests)
+
+  build job:
+  - Only runs if test passes (needs: test)
+  - Compiles TypeScript to verify no build errors
+
+  If any step fails → job goes red → you fix before merging.
+  If all steps pass → job goes green → safe to deploy.
+
+  Analogy: Like a quality check at a factory — every product
+  goes through inspection before it leaves. A defect gets
+  caught at the factory, not when the customer opens the box.
+
+
+----------------------------------------------------------------
+  DEPLOYMENT ON RENDER
+----------------------------------------------------------------
+
+Render is a cloud platform that hosts your Docker container
+and PostgreSQL database for free.
+
+  Flow:
+  1. Push code to GitHub
+  2. Render detects new commit automatically
+  3. Pulls your repo and builds the Dockerfile
+  4. Deploys the new container
+  5. App is live at yourapp.onrender.com
+
+  Two separate services on Render:
+  - PostgreSQL database (free managed DB)
+  - Web Service (runs your Docker container)
+
+  Internal URL vs External URL:
+  - Internal URL → used by your app container (faster, free)
+  - External URL → used from your local machine for migrations
+
+  Environment Variables on Render:
+  - DATABASE_URL → set to the Internal Database URL
+  - Never hardcode secrets in your Dockerfile or code
+
+
+----------------------------------------------------------------
+  THE FULL CI/CD + DEPLOYMENT FLOW
+----------------------------------------------------------------
+
+  You write code locally
+      ↓
+  git push to GitHub
+      ↓
+  GitHub Actions triggers
+      ↓
+  Tests run automatically
+      ↓
+  Build verified
+      ↓
+  Render detects new commit
+      ↓
+  Docker image built and deployed
+      ↓
+  Live at yourapp.onrender.com 🌐
+
+  Every push goes through tests before reaching production.
+  A broken push never reaches your users.
+
+
+----------------------------------------------------------------
+  HOW A NEW DEV RUNS YOUR PROJECT
+----------------------------------------------------------------
+
+Requirements: Git, Docker, Node.js
+
+  git clone https://github.com/yourname/user-crud.git
+  cd user-crud
+  npm install
+  cp .env.example .env      # fill in your DB credentials
+  docker-compose up -d      # start app + database
+  npx prisma migrate deploy # create tables
+  # API is running at localhost:3000
+
+  .env.example → commit this to GitHub (no real secrets)
+  .env         → never commit this (add to .gitignore)
+
+
+----------------------------------------------------------------
+  KEY COMMANDS CHEAT SHEET
+----------------------------------------------------------------
+
+  Docker:
+    docker-compose up --build    → build and start
+    docker-compose up -d         → start in background
+    docker-compose down          → stop
+    docker ps                    → list running containers
+    docker logs <container>      → view container logs
+
+  Prisma:
+    npx prisma generate          → generate TS client
+    npx prisma migrate dev       → create + apply migration (local)
+    npx prisma migrate deploy    → apply migrations (production)
+    npx prisma studio            → visual database browser
+
+  GitHub Actions:
+    Triggered automatically on push to main
+    View results in GitHub repo → Actions tab
+
+
+================================================================

@@ -1,0 +1,1250 @@
+================================================================
+  THE COMPLETE DEVELOPER NOTES
+  NestJS + PostgreSQL + Docker + CI/CD + OAuth
+  From Zero to Industry-Ready
+================================================================
+  Read this time to time. Focus on understanding, not memorizing.
+  The concepts here never change — only the syntax does.
+================================================================
+
+
+════════════════════════════════════════════════════════════════
+  PHASE 1 — FOUNDATIONS
+  OOP, MVC, Dependency Injection
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  THE MOST IMPORTANT MINDSET
+----------------------------------------------------------------
+
+The goal of every concept in this document is to answer
+one question: "How do we write code that is easy to change?"
+
+Bad code is code that, when you change one thing, breaks
+five other things. Good code is code where each piece has
+one job, and changing it doesn't ripple everywhere.
+
+Everything you learned — MVC, DI, Single Responsibility,
+testing, Docker — all of it exists to solve this one problem.
+
+
+----------------------------------------------------------------
+  MVC — MODEL VIEW CONTROLLER
+----------------------------------------------------------------
+
+MVC is an architecture pattern that separates your code into
+three layers so each layer has one job.
+
+  Model      → the shape of your data
+  Controller → handles incoming requests, returns responses
+  Service    → where the actual business logic lives
+
+  In NestJS (no View layer since it's an API):
+  user.model.ts / entity    → what a User looks like
+  users.controller.ts       → handles HTTP requests
+  users.service.ts          → manages data and logic
+
+  WHY IT MATTERS:
+  If you change how users are stored (memory → database),
+  you only change the service. The controller stays the same.
+  Nothing bleeds into each other.
+
+  Analogy: Restaurant
+    Model      = the menu (what food exists)
+    Service    = the kitchen (where food is made)
+    Controller = the waiter (takes order, brings food back)
+    main.ts    = the customer (places the order)
+
+  The waiter doesn't cook. The chef doesn't seat customers.
+  If you change the recipe, the waiter doesn't need retraining.
+
+
+----------------------------------------------------------------
+  THE DATA FLOW — ALWAYS IN THIS DIRECTION
+----------------------------------------------------------------
+
+  main.ts / HTTP Request
+      → Controller (receives input)
+      → Service (does the work)
+      → Database / Data source
+      → back to Service
+      → back to Controller (formats response)
+      → back to caller (HTTP Response)
+
+  IMPORTANT: return always goes back to whoever called the
+  function — not the file, the CALLER. Files don't matter,
+  only the call chain does. A value travels like a relay race.
+
+  The controller never touches data directly.
+  The service never knows who called it.
+  This separation is the entire point.
+
+
+----------------------------------------------------------------
+  SINGLE RESPONSIBILITY PRINCIPLE
+----------------------------------------------------------------
+
+One class. One job. Period.
+
+  UserService    → manages user data. Nothing else.
+  UserController → handles HTTP for users. Nothing else.
+  PrismaService  → database connection. Nothing else.
+
+  If a class is doing two things, split it into two classes.
+  If you can't describe what a class does in one sentence
+  without using "and" — it has too many responsibilities.
+
+  WHY IT MATTERS:
+  When something breaks, you know exactly where to look.
+  When you need to change something, you change one place.
+
+
+----------------------------------------------------------------
+  ENCAPSULATION
+----------------------------------------------------------------
+
+Keep data and logic inside a class. Only expose what's needed.
+
+  private users: User[] = [];  // nobody outside can touch this
+
+  Instead of accessing users[] directly from outside,
+  you call methods: createUser(), findAll(), deleteUser()
+
+  The class controls HOW its data is accessed and changed.
+  This prevents accidental corruption of data.
+
+  Analogy: A bank account. You can't directly set your balance
+  to 1,000,000. You have to go through deposit() and withdraw()
+  which have rules and validations.
+
+
+----------------------------------------------------------------
+  DEPENDENCY INJECTION (DI) — MOST IMPORTANT CONCEPT
+----------------------------------------------------------------
+
+Instead of a class creating its own dependencies, they are
+passed in from outside. The class doesn't know or care where
+they came from.
+
+  // ❌ Bad — controller creates its own service
+  class UserController {
+    private service = new UserService(); // tightly coupled!
+  }
+
+  // ✅ Good — service is injected in
+  class UserController {
+    constructor(private userService: UserService) {}
+  }
+
+  WHY IT MATTERS:
+  - Loose coupling → controller doesn't care HOW service works
+  - Testability → in tests, you inject a FAKE service
+  - Flexibility → swap implementations without changing caller
+  - Single instance → everyone shares the same object
+
+  COMMON BUG: if you create new UserService() inside the
+  controller, it's a SEPARATE object with its own empty data.
+  Changes don't share. This is a classic beginner mistake.
+
+  Analogy: When you hire a new employee (create the controller),
+  you hand them the company phone (userService) on day 1.
+  They don't go buy their own phone — they use the one given.
+  Now every method they have can use that same phone.
+
+  IN NESTJS: The Module handles DI automatically.
+  You declare what providers exist, NestJS creates them once
+  and injects them wherever needed. You never write "new" manually.
+
+
+----------------------------------------------------------------
+  THE CONSTRUCTOR
+----------------------------------------------------------------
+
+A special function that runs AUTOMATICALLY the moment you
+create an object with "new". Its job is to set up everything
+the class needs before any method is called.
+
+  new UserController(userService)
+      ↓
+  constructor runs immediately
+      ↓
+  this.userService = userService  ← stored for all methods
+      ↓
+  create(), getAll(), delete() can all use this.userService
+
+  This is why all methods in a class can use this.userService —
+  it was stored ONCE in the constructor, shared by ALL methods.
+  No redundancy. No passing it around every time.
+
+
+----------------------------------------------------------------
+  IMPORTS ARE ONE-DIRECTIONAL
+----------------------------------------------------------------
+
+Only the CALLER needs to import. The one being called doesn't
+need to know who called it.
+
+  main.ts imports Controller and Service (uses both)
+  Controller imports Service (calls it)
+  Service imports nothing (just does its job when called)
+
+  Analogy: The person who calls needs to know your number.
+  The person who receives just picks up and responds.
+  The cook doesn't need to know who will eat the food —
+  the cook just cooks.
+
+
+----------------------------------------------------------------
+  SYNCHRONOUS VS ASYNCHRONOUS
+----------------------------------------------------------------
+
+JavaScript is SINGLE-THREADED — it can only do one thing at
+a time. Code runs one line at a time, top to bottom.
+
+  create('Juan')  → fully completes → then
+  create('Maria') → fully completes → then
+  create('Pedro') → fully completes
+
+  This is SYNCHRONOUS execution. Line 2 doesn't start until
+  line 1 is 100% done.
+
+  ASYNCHRONOUS (async/await) — for when a task needs to wait:
+  Database calls, API calls, file reads take TIME.
+  Without await, you get a Promise object, not the actual data.
+
+  // ❌ gets a Promise, not the user
+  const user = this.prisma.user.findUnique(...);
+
+  // ✅ waits for the actual user object
+  const user = await this.prisma.user.findUnique(...);
+
+  Any function that uses await must be marked async.
+  Think of await as "pause here until this finishes,
+  then continue" — without blocking everything else.
+
+
+----------------------------------------------------------------
+  MUST REMEMBER — PHASE 1
+----------------------------------------------------------------
+
+  ★ Each class has ONE job — never two
+  ★ Data flows: caller → controller → service → back up
+  ★ return goes back to the CALLER, not the file
+  ★ DI = dependencies passed IN, not created inside
+  ★ Constructor runs on "new" — sets up the class
+  ★ private = only this class can access it
+  ★ Imports go one way — caller imports, not the other way
+  ★ async/await for anything that takes time (DB, APIs)
+
+
+════════════════════════════════════════════════════════════════
+  PHASE 2 — NESTJS + POSTGRESQL + PRISMA
+  Real API with Real Database
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  NESTJS — WHAT IT IS
+----------------------------------------------------------------
+
+NestJS is a framework that gives structure to Node.js apps.
+It uses TypeScript and is heavily inspired by Angular and .NET.
+
+  It enforces MVC architecture automatically.
+  It handles Dependency Injection for you.
+  It uses decorators to define routes, guards, and more.
+
+  Your Phase 1 manual work → NestJS does automatically:
+    you wrote: new UserService() then injected it
+    NestJS:    registers it in Module, injects everywhere
+
+  WHY NESTJS IN INDUSTRY:
+  Without a framework, every team structures code differently.
+  NestJS gives a standard structure everyone understands.
+  New developers know exactly where to find things.
+
+
+----------------------------------------------------------------
+  NESTJS FILE STRUCTURE
+----------------------------------------------------------------
+
+  src/
+    users/
+      users.module.ts       → wires the feature together
+      users.controller.ts   → HTTP routes for users
+      users.service.ts      → business logic for users
+      dto/
+        create-user.dto.ts  → shape of incoming POST data
+        update-user.dto.ts  → shape of incoming PATCH data
+      entities/
+        user.entity.ts      → shape of user in database
+    prisma/
+      prisma.module.ts      → makes PrismaService available
+      prisma.service.ts     → database connection
+    auth/
+      auth.module.ts
+      auth.controller.ts
+      auth.service.ts
+      strategies/           → Passport strategies
+      guards/               → route protection
+    app.module.ts           → root module, imports everything
+    main.ts                 → entry point, bootstraps app
+
+
+----------------------------------------------------------------
+  NESTJS DECORATORS — THE NEW SYNTAX
+----------------------------------------------------------------
+
+Decorators are the @ symbols. They add behavior to classes
+and methods without changing the code inside them.
+
+  @Module()      → this class wires the app together
+  @Controller()  → this class handles HTTP requests
+  @Injectable()  → this class can be injected as dependency
+  @Get()         → this method handles GET requests
+  @Post()        → this method handles POST requests
+  @Patch()       → this method handles PATCH requests
+  @Delete()      → this method handles DELETE requests
+  @Body()        → grab data from request body (JSON)
+  @Param('id')   → grab :id from the URL
+  @UseGuards()   → protect this route with a guard
+
+  @Controller('users') means all routes start with /users:
+    @Get()        → GET  /users
+    @Get(':id')   → GET  /users/1
+    @Post()       → POST /users
+    @Patch(':id') → PATCH /users/1
+    @Delete(':id')→ DELETE /users/1
+
+
+----------------------------------------------------------------
+  THE MODULE — NESTJS WIRING SYSTEM
+----------------------------------------------------------------
+
+The Module replaces the manual wiring you did in main.ts.
+You declare what exists, NestJS handles the rest.
+
+  @Module({
+    imports: [PrismaModule],        // bring in other modules
+    controllers: [UsersController], // register controllers
+    providers: [UsersService],      // register services
+    exports: [UsersService],        // share with other modules
+  })
+
+  imports   → modules this module depends on
+  providers → services, strategies, guards (anything injectable)
+  exports   → what other modules can use from this module
+
+  Analogy: The Module is the restaurant manager — assigns
+  which waiters work with which kitchen so you don't have
+  to coordinate it yourself every single day.
+
+  IMPORTANT: If service A needs service B, module A must
+  import module B (and module B must export service B).
+  Otherwise NestJS can't resolve the dependency.
+
+
+----------------------------------------------------------------
+  DTO — DATA TRANSFER OBJECT
+----------------------------------------------------------------
+
+A DTO defines the SHAPE OF DATA COMING IN from a request.
+It's the gatekeeper — only the right shape gets through.
+
+  export class CreateUserDto {
+    name!: string;   // ! tells TS it will be assigned
+    email!: string;
+  }
+
+  WHY DTOs EXIST:
+  Without DTOs, anything can come in — extra fields, wrong
+  types, missing required fields. DTOs define the contract.
+
+  UpdateUserDto extends CreateUserDto with PartialType —
+  all fields become optional. You can update just the name
+  without sending the email. Smart and DRY.
+
+  DTOs + class-validator = automatic validation:
+    @IsString()    → must be a string
+    @IsNotEmpty()  → cannot be empty
+    @IsEmail()     → must be valid email format
+    @IsOptional()  → field is not required
+
+
+----------------------------------------------------------------
+  VALIDATION — PROTECTING YOUR API
+----------------------------------------------------------------
+
+Enable globally in main.ts ONCE — applies everywhere:
+
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,            // strips unknown fields
+    forbidNonWhitelisted: true, // rejects unknown fields
+  }));
+
+  whitelist: true
+  → if someone sends { name, email, hacked: true }
+  → "hacked" field is silently stripped
+
+  forbidNonWhitelisted: true
+  → goes further, REJECTS the whole request if unknown fields
+
+  Bad data → 400 Bad Request with clear message
+  Good data → passes through to the service
+
+  ALWAYS validate at the edge (controller/DTO level).
+  Never trust incoming data. Ever.
+
+
+----------------------------------------------------------------
+  POSTGRESQL + PRISMA
+----------------------------------------------------------------
+
+PostgreSQL is the database — stores your data permanently.
+Prisma is the ORM — lets you write TypeScript instead of SQL.
+
+  ORM = Object Relational Mapper
+  Maps your TypeScript classes to database tables.
+  So instead of: SELECT * FROM users WHERE id = 1
+  You write:     prisma.user.findUnique({ where: { id: 1 } })
+
+  SCHEMA → MIGRATION → TABLE:
+  1. Define shape in schema.prisma (the blueprint)
+  2. Run migration (actually builds the table in PostgreSQL)
+  3. Generate client (creates TypeScript types)
+
+  model User {
+    id        Int      @id @default(autoincrement())
+    name      String
+    email     String   @unique   ← no duplicates
+    createdAt DateTime @default(now()) ← auto timestamp
+  }
+
+  Key decorators:
+    @id              → primary key
+    @unique          → no duplicate values
+    @default(now())  → auto-set on creation
+    ?                → nullable field (can be null)
+
+  PRISMA COMMANDS:
+    npx prisma migrate dev --name init  → create + apply (local)
+    npx prisma migrate deploy           → apply only (production)
+    npx prisma generate                 → regenerate TS client
+    npx prisma studio                   → visual DB browser
+
+  NEVER use migrate dev in production.
+  ALWAYS use migrate deploy in production.
+  migrate dev creates new migration files — not for prod.
+  migrate deploy only applies existing ones — safe for prod.
+
+
+----------------------------------------------------------------
+  HTTP STATUS CODES — MUST KNOW
+----------------------------------------------------------------
+
+  200 OK            → success (GET, PATCH, DELETE)
+  201 Created       → resource created (POST)
+  400 Bad Request   → client sent bad data (validation fail)
+  401 Unauthorized  → not logged in / no token
+  403 Forbidden     → logged in but no permission
+  404 Not Found     → resource doesn't exist
+  500 Server Error  → something crashed on the server
+
+  401 vs 403: 401 = "who are you?" / 403 = "I know who you
+  are, but you can't do this."
+
+  Always return the right status code. It's how clients
+  know what happened and what to do next.
+
+
+----------------------------------------------------------------
+  ERROR HANDLING — NESTJS EXCEPTIONS
+----------------------------------------------------------------
+
+NestJS has built-in exceptions that map to HTTP status codes:
+
+  throw new NotFoundException('User not found')     → 404
+  throw new BadRequestException('Invalid data')     → 400
+  throw new UnauthorizedException('Not logged in')  → 401
+  throw new ForbiddenException('No permission')     → 403
+
+  Reuse logic to avoid duplication:
+  update() calls findOne() first — findOne already throws 404
+  So update gets 404 handling for free without extra code.
+  This is Single Responsibility + DRY working together.
+
+
+----------------------------------------------------------------
+  CONFIGMODULE — LOADING .ENV
+----------------------------------------------------------------
+
+process.env.KEY is undefined if .env isn't loaded first.
+ConfigModule.forRoot({ isGlobal: true }) loads it before
+anything else runs.
+
+  Always put ConfigModule FIRST in AppModule imports.
+  isGlobal: true means you don't need to import it in
+  every module — it's available everywhere automatically.
+
+  For modules that need env vars at initialization time
+  (like JwtModule), use registerAsync with ConfigService:
+
+  JwtModule.registerAsync({
+    useFactory: (config) => ({
+      secret: config.get('JWT_SECRET'),
+    }),
+    inject: [ConfigService],
+  })
+
+  This waits for ConfigModule to finish loading before
+  creating JwtModule. Prevents "undefined" secret errors.
+
+
+----------------------------------------------------------------
+  MUST REMEMBER — PHASE 2
+----------------------------------------------------------------
+
+  ★ Module = wiring. Controller = HTTP. Service = logic.
+  ★ DTOs define what data can come IN
+  ★ Entities define what data looks like in the DB
+  ★ Validate at the edge, never trust incoming data
+  ★ migrate dev for local, migrate deploy for production
+  ★ Always regenerate client after schema changes
+  ★ ConfigModule first, always
+  ★ 401 = who are you? / 403 = you can't do this
+  ★ Throw NestJS exceptions, not raw errors
+
+
+════════════════════════════════════════════════════════════════
+  PHASE 3 — VALIDATION, ERROR HANDLING, UNIT TESTING
+  Production-Ready Code
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  UNIT TESTING — WHAT AND WHY
+----------------------------------------------------------------
+
+A unit test checks that ONE SMALL PIECE OF CODE works
+correctly IN ISOLATION — without touching the real database,
+real network, or anything external.
+
+  The key word is ISOLATION.
+  You don't want a test to fail because the DB is down.
+  You want it to fail ONLY if YOUR CODE LOGIC is wrong.
+
+  Real code:  UsersService → PrismaService → PostgreSQL
+  Unit test:  UsersService → FakePrismaService → nothing
+
+  Analogy: Testing a car's brakes in a garage — you don't
+  need to drive on a real road to know if the brakes work.
+  You isolate the component and test it directly.
+
+  WHY TESTS MATTER IN INDUSTRY:
+  A REGRESSION is when a new change accidentally breaks old
+  functionality. Without tests, you only find regressions
+  when users complain. With tests, you find them immediately.
+
+  Without tests:
+    change code → manually test → hope nothing broke
+    → deploy → users find the bug 😬
+
+  With tests:
+    change code → npm run test
+    → test fails immediately → fix before deploy ✅
+
+
+----------------------------------------------------------------
+  THE AAA PATTERN — EVERY TEST FOLLOWS THIS
+----------------------------------------------------------------
+
+  Arrange  → set up fake data and mocks
+  Act      → call the real function you're testing
+  Assert   → check the result is what you expected
+
+  it('should throw NotFoundException if user not found', async () => {
+    // Arrange
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    // Act + Assert
+    await expect(service.findOne(999))
+      .rejects.toThrow(NotFoundException);
+  });
+
+  Tests should read like sentences:
+  "it should throw NotFoundException if user not found"
+  "it should return all users"
+  "it should create a user"
+
+
+----------------------------------------------------------------
+  MOCKS — FAKING DEPENDENCIES
+----------------------------------------------------------------
+
+A mock is a fake version of a dependency that you control.
+You tell it what to return instead of hitting the real DB.
+
+  const mockPrismaService = {
+    user: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
+  };
+
+  // tell the mock what to return
+  mockPrisma.user.findUnique.mockResolvedValue(null);
+  mockPrisma.user.findMany.mockResolvedValue([user1, user2]);
+
+  In tests, inject the mock instead of the real service:
+  { provide: PrismaService, useValue: mockPrismaService }
+
+  jest.clearAllMocks() — reset all mocks before each test
+  so one test's setup doesn't bleed into the next test.
+
+
+----------------------------------------------------------------
+  JEST — THE TESTING TOOLKIT
+----------------------------------------------------------------
+
+  describe()           → groups related tests (like a folder)
+  it() / test()        → one single test case
+  jest.fn()            → creates a controllable fake function
+  mockResolvedValue()  → what the fake returns (async)
+  mockReturnValue()    → what the fake returns (sync)
+  expect()             → assertion — check the result
+  toEqual()            → deep equality check
+  toHaveBeenCalled()   → verify function was called
+  toHaveBeenCalledWith() → verify called with specific args
+  rejects.toThrow()    → verify async function throws error
+  jest.clearAllMocks() → reset all mocks between tests
+
+  npm run test         → run all tests once
+  npm run test:watch   → run tests on file change
+  npm run test:cov     → run tests + show coverage %
+
+
+----------------------------------------------------------------
+  MUST REMEMBER — PHASE 3
+----------------------------------------------------------------
+
+  ★ Unit tests test ONE thing in ISOLATION
+  ★ Mocks replace real dependencies with fake ones
+  ★ AAA: Arrange → Act → Assert
+  ★ Tests read like sentences describing expected behavior
+  ★ clearAllMocks() between tests — no bleed-over
+  ★ Tests catch regressions — broken old behavior
+  ★ Validate at edges, throw named exceptions in services
+  ★ Reuse logic — if findOne throws 404, update gets it free
+
+
+════════════════════════════════════════════════════════════════
+  PHASE 4 — DOCKER + CI/CD + DEPLOYMENT
+  Running Anywhere, Shipping Safely
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  DOCKER — WHY IT EXISTS
+----------------------------------------------------------------
+
+"It works on my machine" is a real problem.
+Docker solves it by packaging your app AND its environment
+into a container — an isolated box that runs the same
+on every machine.
+
+  Without Docker:
+    Dev machine: Node 20, PostgreSQL 16 → works ✅
+    Server: Node 18, PostgreSQL 14 → breaks ❌
+    New dev: spend 2 days setting up environment ❌
+
+  With Docker:
+    Everyone runs the same container → same environment
+    New dev: clone repo, docker-compose up → done in minutes ✅
+
+  Analogy: A lunchbox — everything the app needs is packed
+  inside. Give the lunchbox to any machine, it works the same.
+
+  KEY CONCEPTS:
+  Image   → the blueprint (like a class)
+  Container → a running instance of an image (like an object)
+  Volume  → persistent storage that survives container restarts
+  Network → how containers talk to each other
+
+
+----------------------------------------------------------------
+  DOCKERFILE — MULTI-STAGE BUILD
+----------------------------------------------------------------
+
+A Dockerfile is a recipe for building your app into an image.
+Multi-stage builds keep the final image lean.
+
+  Stage 1 (builder):
+    → install ALL dependencies (including dev/TypeScript)
+    → generate Prisma client
+    → compile TypeScript → JavaScript
+
+  Stage 2 (production):
+    → fresh clean image
+    → install ONLY production dependencies
+    → copy compiled dist/ from Stage 1
+    → start the app
+
+  WHY TWO STAGES:
+  The final image has NO TypeScript compiler, NO test files,
+  NO dev tools. Smaller image = faster deploy, less attack surface.
+
+  Analogy: Cooking a meal (Stage 1) then only plating the food
+  (Stage 2). You don't serve the dirty pots and measuring cups.
+
+
+----------------------------------------------------------------
+  DOCKER COMPOSE — FULL STACK IN ONE COMMAND
+----------------------------------------------------------------
+
+docker-compose.yml wires multiple containers together.
+
+  services:
+    db:   → PostgreSQL container
+    app:  → your NestJS container
+
+  KEY CONCEPTS:
+  healthcheck → verify DB is ready BEFORE app starts
+               without this, app crashes on startup
+
+  depends_on: condition: service_healthy
+  → app waits for DB healthcheck to pass
+
+  DATABASE_URL: ...@db:5432
+  → containers talk by SERVICE NAME, not localhost
+  → "db" = the service name of PostgreSQL
+
+  volumes: pgdata
+  → data persists even when container stops
+  → without volumes, data disappears on restart
+
+  COMMANDS:
+    docker-compose up --build  → build images and start
+    docker-compose up -d       → start in background
+    docker-compose down        → stop all containers
+    docker-compose down -v     → stop + delete volumes
+    docker ps                  → list running containers
+    docker logs <name>         → view container logs
+    docker-compose up -d db    → start only DB service
+
+
+----------------------------------------------------------------
+  .DOCKERIGNORE
+----------------------------------------------------------------
+
+Like .gitignore but for Docker. Keeps the build context small
+and prevents secrets from entering images.
+
+  node_modules   → Docker installs fresh
+  dist           → Docker builds fresh
+  .env           → NEVER put secrets in images
+  *.spec.ts      → no test files in production
+
+  Always have a .dockerignore. Without it, Docker copies
+  node_modules (500MB+) into the build context every time.
+
+
+----------------------------------------------------------------
+  CI/CD — CONTINUOUS INTEGRATION / DELIVERY
+----------------------------------------------------------------
+
+CI = Continuous Integration
+    → automatically TEST every push to GitHub
+
+CD = Continuous Delivery
+    → automatically DEPLOY if tests pass
+
+  Without CI/CD:
+    push code → manually run tests → manually deploy
+    → easy to forget → easy to deploy broken code
+
+  With CI/CD:
+    push code → GitHub Actions automatically:
+              → installs dependencies
+              → runs migrations
+              → runs all tests
+              → builds the app
+              → deploys if everything passes
+
+  PIPELINE STRUCTURE:
+    test job  → runs first (tests must pass)
+    build job → runs only if test passes (needs: test)
+
+  If ANY step fails → pipeline goes red → you fix before deploy.
+  Nobody merges broken code.
+
+  Analogy: A factory quality check — every product goes through
+  inspection before it leaves. Defects caught at the factory,
+  not when the customer opens the box.
+
+
+----------------------------------------------------------------
+  DEPLOYMENT — HOW NEW DEVS RUN YOUR PROJECT
+----------------------------------------------------------------
+
+Requirements: Git, Docker, Node.js
+
+  git clone https://github.com/you/user-crud.git
+  cd user-crud
+  npm install
+  cp .env.example .env      ← fill in credentials
+  docker-compose up -d      ← start app + database
+  npx prisma migrate deploy ← create tables
+  # API running at localhost:3000
+
+  .env.example → COMMIT this (shows required variables)
+  .env         → NEVER commit (add to .gitignore)
+  Secrets go in environment variables, never in code.
+
+
+----------------------------------------------------------------
+  PRISMA MIGRATIONS IN PRODUCTION
+----------------------------------------------------------------
+
+  migrate dev    → LOCAL ONLY
+                 → creates new migration files
+                 → applies them immediately
+                 → prompts for name
+
+  migrate deploy → PRODUCTION
+                 → applies EXISTING migrations only
+                 → never creates new ones
+                 → safe to run in CI/CD pipelines
+
+  Run migrate deploy after every deployment where
+  schema changes were made.
+
+
+----------------------------------------------------------------
+  MUST REMEMBER — PHASE 4
+----------------------------------------------------------------
+
+  ★ Docker = same environment everywhere
+  ★ Image = blueprint / Container = running instance
+  ★ Multi-stage builds keep production images lean
+  ★ Containers talk by service name, not localhost
+  ★ healthcheck prevents app from starting before DB is ready
+  ★ Volumes persist data across container restarts
+  ★ migrate dev = local / migrate deploy = production
+  ★ CI/CD catches broken code before it reaches users
+  ★ .env.example committed / .env never committed
+  ★ Secrets in environment variables, never hardcoded
+
+
+════════════════════════════════════════════════════════════════
+  PHASE 5 — GOOGLE OAUTH + JWT
+  Authentication and Authorization
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  AUTHENTICATION VS AUTHORIZATION
+----------------------------------------------------------------
+
+Two different things that are often confused:
+
+  Authentication = WHO ARE YOU?
+  → proving your identity (login, Google OAuth)
+  → "I am Paul"
+
+  Authorization = WHAT CAN YOU DO?
+  → checking your permissions after identity is proven
+  → "Paul can read users but not delete them"
+
+  401 Unauthorized → actually means unauthenticated
+                     "who are you? prove it"
+  403 Forbidden    → authenticated but no permission
+                     "I know who you are, you just can't do this"
+
+
+----------------------------------------------------------------
+  WHY OAUTH EXISTS
+----------------------------------------------------------------
+
+Building your own auth means:
+  → storing passwords (hashing, salting, security)
+  → email verification flows
+  → password reset flows
+  → 2FA implementation
+  → all the security responsibility
+
+OAuth says: "Let Google handle all of that."
+
+  WHAT GOOGLE OAUTH GIVES YOU FOR FREE:
+  → Identity verification (Google confirms email ownership)
+  → No password storage (no password = no password leak)
+  → Email already verified (Google did it)
+  → 2FA (if user has it on their Google account)
+  → Real person verification (Google has billions of accounts)
+
+  You offload the hardest, most security-critical parts of
+  auth to a company that has entire security teams.
+
+
+----------------------------------------------------------------
+  THE GOOGLE OAUTH FLOW — STEP BY STEP
+----------------------------------------------------------------
+
+  1. User clicks "Sign in with Google"
+  2. GoogleGuard intercepts GET /auth/google
+  3. Passport redirects browser to Google's login page
+  4. User logs in to Google, clicks "Allow"
+  5. Google redirects to GET /auth/google/callback with a CODE
+  6. GoogleStrategy exchanges code for user profile
+  7. GoogleStrategy.validate() extracts: googleId, email, name
+  8. AuthService.validateGoogleUser() runs find-or-create
+  9. AuthService.generateToken() signs a JWT
+  10. Response: { access_token: "eyJ..." }
+  11. Client stores token, sends it on every future request
+
+  YOUR APP NEVER SEES THE PASSWORD.
+  Google handles identity. You handle what happens after.
+
+
+----------------------------------------------------------------
+  FIND OR CREATE PATTERN
+----------------------------------------------------------------
+
+The backbone of OAuth user management:
+
+  let user = await prisma.user.findUnique({
+    where: { googleId: googleUser.googleId }
+  });
+
+  if (!user) {
+    user = await prisma.user.create({ data: googleUser });
+  }
+
+  return user;
+
+  First time login → user not found → CREATE
+  Return login     → user found     → use existing
+
+  WHY googleId AND NOT email:
+  A user could delete their Google account and create a new
+  one with the same email. The googleId is truly unique and
+  permanent per Google account.
+
+
+----------------------------------------------------------------
+  WHAT IS JWT — JSON WEB TOKEN
+----------------------------------------------------------------
+
+A signed token that proves identity without hitting the DB
+on every request.
+
+  Structure: header.payload.signature
+  
+  Header    → algorithm (HS256)
+  Payload   → your data { sub, email, name, exp }
+  Signature → HMAC signed with JWT_SECRET
+
+  Anyone can READ the payload (it's base64, not encrypted).
+  Nobody can FAKE the signature without knowing JWT_SECRET.
+  That's the security — forgery is mathematically impossible
+  without the secret key.
+
+  ANALOGY: Concert wristband
+  - Show ID at door (login) → get wristband (JWT)
+  - Show wristband for everything else — no ID needed again
+  - Wristband expires at midnight (token expiry)
+  - Fake wristband detected immediately (invalid signature)
+
+
+----------------------------------------------------------------
+  WHY JWT EXISTS — THE PROBLEM IT SOLVES
+----------------------------------------------------------------
+
+Without JWT, you'd send credentials on every request:
+
+  GET /profile
+  Authorization: email=paul@gmail.com&password=secret123
+  → server queries DB and checks password EVERY time
+  → 100 requests = 100 password checks = slow + insecure ❌
+
+With JWT, you login once and get a ticket:
+
+  POST /auth/login → verify password → here's your JWT
+  GET /profile
+  Authorization: Bearer eyJ...
+  → server verifies JWT SIGNATURE ONLY (no DB call!)
+  → fast, stateless, works across multiple servers ✅
+
+  JWT is stateless — the server doesn't store session state.
+  The token IS the proof. Verification happens in memory.
+
+
+----------------------------------------------------------------
+  REGISTER VS LOGIN — WHY BOTH GENERATE JWT
+----------------------------------------------------------------
+
+  Register → [create account] → [generate JWT] → logged in
+  Login    → [verify password] → [generate JWT] → logged in
+
+  Register JWT purpose:
+  → Enter the app IMMEDIATELY after account creation
+  → No need to fill the login form right after registering
+  → "welcome, here's your first wristband"
+
+  Login JWT purpose:
+  → Get a NEW token after the old one expired
+  → Or when coming back on a new device
+  → "your old wristband expired, here's a new one"
+
+  KEY INSIGHT: Both end at the same place — a JWT in the
+  client's hands. The only difference is what happens BEFORE
+  the token is generated.
+
+
+----------------------------------------------------------------
+  TOKEN EXPIRY AND LOGOUT
+----------------------------------------------------------------
+
+There is no real server-side logout with JWT.
+
+  Logout = delete token from client (localStorage, cookie)
+  Server doesn't know you "logged out"
+  Old token still valid until expiry
+
+  This is why expiry time matters:
+    Short (15 min)  → high security apps (banking, medical)
+    Medium (1 hour) → moderate security
+    Long (7 days)   → casual apps, better UX
+
+  For TRUE logout: token blacklist in Redis (advanced)
+  → server keeps a list of invalidated tokens
+  → checks blacklist on every request
+
+  WHY YOU'RE STILL LOGGED IN AFTER SHUTDOWN:
+  JWT doesn't care about browser state or shutdown.
+  It only expires at the timestamp in the "exp" field.
+  Until then, the token is valid — period.
+
+
+----------------------------------------------------------------
+  MULTIPLE DEVICES — SAME PERSON
+----------------------------------------------------------------
+
+Each device gets its own independent token:
+
+  Laptop  → login → token A (valid 7 days)
+  Phone   → login → token B (valid 7 days)
+  Tablet  → login → token C (valid 7 days)
+
+  All 3 valid simultaneously. Server just verifies signature —
+  doesn't care how many devices you're using.
+
+  This is JWT's strength: stateless, infinitely scalable,
+  multiple devices for free with zero extra work.
+
+
+----------------------------------------------------------------
+  LOCAL AUTH VS GOOGLE OAUTH — SIDE BY SIDE
+----------------------------------------------------------------
+
+Real apps support both:
+
+  Google OAuth:
+    → "Sign in with Google" button
+    → no password needed
+    → googleId stored in DB
+    → password field is null
+
+  Local auth (email + password):
+    → user fills registration form
+    → password HASHED with bcrypt before storing
+    → NEVER store plain text passwords. Ever.
+    → login: find user by email → compare hash → JWT
+
+  User model supports both:
+    password  nullable → null for Google users
+    googleId  nullable → null for local users
+    email     unique   → same email can't register twice
+
+  BCRYPT: a one-way hashing function for passwords
+  → hash("password123") → "$2b$10$..."
+  → you can verify but never reverse
+  → even if DB is leaked, passwords are safe
+
+
+----------------------------------------------------------------
+  PASSPORT STRATEGIES — HOW NESTJS AUTH WORKS
+----------------------------------------------------------------
+
+Passport is the industry standard auth library for Node.js.
+NestJS wraps it with @nestjs/passport.
+
+  Strategy = a method of authentication
+
+  GoogleStrategy ('google'):
+  → handles OAuth redirect and callback
+  → validate() extracts profile from Google's response
+  → returns user data → goes into req.user
+
+  JwtStrategy ('jwt'):
+  → extracts token from Authorization: Bearer <token>
+  → verifies signature with JWT_SECRET
+  → validate() returns user data → goes into req.user
+
+  Guards activate strategies:
+  @UseGuards(GoogleGuard) → triggers Google OAuth
+  @UseGuards(JwtGuard)    → verifies JWT token
+
+  Without valid token → 401 automatically
+  With valid token    → req.user populated → route runs
+
+
+----------------------------------------------------------------
+  IMPORTANT: ENVIRONMENT VARIABLES FOR AUTH
+----------------------------------------------------------------
+
+  GOOGLE_CLIENT_ID      → from Google Cloud Console
+  GOOGLE_CLIENT_SECRET  → from Google Cloud Console
+  GOOGLE_CALLBACK_URL   → MUST match exactly in Google Console
+  JWT_SECRET            → long random string, keep it secret
+
+  Generate secure JWT_SECRET:
+  node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+  NEVER commit secrets to GitHub.
+  NEVER hardcode secrets in code.
+  ALWAYS use environment variables.
+  Rotate secrets if they are ever exposed.
+
+
+----------------------------------------------------------------
+  MUST REMEMBER — PHASE 5
+----------------------------------------------------------------
+
+  ★ Authentication = who are you? / Authorization = what can you do?
+  ★ 401 = not authenticated / 403 = authenticated but no permission
+  ★ OAuth offloads identity verification to Google
+  ★ Your app never sees the OAuth user's password
+  ★ JWT = signed ticket, no DB call needed to verify
+  ★ Payload is readable, signature is unforgeable
+  ★ Find-or-create: googleId is unique per person
+  ★ Register JWT = login immediately / Login JWT = new token
+  ★ Logout = delete token from client only (server doesn't know)
+  ★ Multiple devices = multiple tokens, all valid simultaneously
+  ★ NEVER store plain text passwords — always bcrypt hash
+  ★ JWT_SECRET must be long, random, and never shared
+
+
+════════════════════════════════════════════════════════════════
+  GENERAL TIPS — INDUSTRY MINDSET
+════════════════════════════════════════════════════════════════
+
+
+----------------------------------------------------------------
+  WHAT TO MEMORIZE VS WHAT TO LOOK UP
+----------------------------------------------------------------
+
+  MEMORIZE (concepts — never change):
+  → Why MVC exists and what each layer does
+  → What DI is and why it matters
+  → How the request/response flow works
+  → What JWT is and how it works
+  → Authentication vs Authorization
+  → When to use migrate dev vs migrate deploy
+  → What Docker containers and images are
+  → The AAA testing pattern
+
+  UNDERSTAND (patterns — recognize on sight):
+  → Class structure, constructor, methods
+  → How modules wire things together
+  → How guards protect routes
+  → How async/await works
+
+  LOOK UP EVERY TIME (syntax — changes per language/version):
+  → Exact decorator names
+  → Exact Prisma method signatures
+  → Exact Jest assertion methods
+  → npm package names and versions
+
+  Senior devs google things constantly.
+  The difference is they know WHAT to google.
+
+
+----------------------------------------------------------------
+  HOW REAL TEAMS WORK
+----------------------------------------------------------------
+
+  Feature branches → nobody pushes directly to main
+  Pull requests    → code review before merging
+  CI/CD pipeline   → tests run on every PR
+  Code review      → another dev checks your code
+  Staging env      → test before hitting production
+  Migrations       → always reviewed before deploying
+
+  The pipeline is your safety net.
+  Tests are your documentation of expected behavior.
+  Code review is how teams share knowledge.
+
+
+----------------------------------------------------------------
+  COMMON BEGINNER MISTAKES TO AVOID
+----------------------------------------------------------------
+
+  ❌ Creating new Service() inside a class (breaks DI)
+  ❌ Putting business logic in controllers
+  ❌ Putting HTTP logic in services
+  ❌ Using migrate dev in production
+  ❌ Storing plain text passwords
+  ❌ Committing .env to GitHub
+  ❌ Hardcoding secrets in code
+  ❌ Not handling errors (letting Prisma errors leak)
+  ❌ Not validating incoming data
+  ❌ Using localhost instead of service name in Docker
+  ❌ Forgetting to run prisma generate after schema changes
+
+
+----------------------------------------------------------------
+  THE STACK YOU BUILT — INDUSTRY TERMS
+----------------------------------------------------------------
+
+  NestJS          → backend framework (like Spring for Java)
+  TypeScript      → typed JavaScript
+  PostgreSQL      → relational database
+  Prisma          → ORM (Object Relational Mapper)
+  Docker          → containerization
+  docker-compose  → multi-container orchestration
+  GitHub Actions  → CI/CD pipeline
+  Passport.js     → authentication middleware
+  JWT             → JSON Web Token (stateless auth)
+  OAuth 2.0       → delegated authorization protocol
+  REST API        → architectural style for APIs
+  MVC             → Model View Controller pattern
+  DI              → Dependency Injection pattern
+  bcrypt          → password hashing algorithm
+
+
+----------------------------------------------------------------
+  FINAL REMINDER
+----------------------------------------------------------------
+
+  You don't need to memorize the code.
+  You need to understand WHY the code is written that way.
+
+  When you look at any NestJS codebase:
+  → You know what each file does and why it exists
+  → You know how data flows through the layers
+  → You know what the decorators mean
+  → You know what's happening in the auth flow
+  → You know why tests are written that way
+
+  That understanding — not syntax memorization —
+  is what separates engineers from code copiers.
+
+  The syntax you can always look up.
+  The concepts live in your head forever.
+
+================================================================
+  END OF NOTES
+  Keep learning. Keep building. Keep asking why.
+================================================================

@@ -42,16 +42,19 @@ jobs:
         run: npx prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/user_crud?schema=public
+          # DATABASE_URL: postgresql://user_crud_db_80ru_user:LRMM0hSKOchhE7uOBIOR96K6pTeVF6G6@dpg-d7u5k9jtqb8s739tbsv0-a.oregon-postgres.render.com/user_crud_db_80ru
 
       - name: Run migrations
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/user_crud?schema=public
+          # DATABASE_URL: postgresql://user_crud_db_80ru_user:LRMM0hSKOchhE7uOBIOR96K6pTeVF6G6@dpg-d7u5k9jtqb8s739tbsv0-a.oregon-postgres.render.com/user_crud_db_80ru
 
       - name: Run tests
         run: npm run test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/user_crud?schema=public
+          # DATABASE_URL: postgresql://user_crud_db_80ru_user:LRMM0hSKOchhE7uOBIOR96K6pTeVF6G6@dpg-d7u5k9jtqb8s739tbsv0-a.oregon-postgres.render.com/user_crud_db_80ru
 
   build:
     runs-on: ubuntu-latest
@@ -74,6 +77,6 @@ jobs:
         run: npx prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/user_crud?schema=public
-
+          # DATABASE_URL: postgresql://user_crud_db_80ru_user:LRMM0hSKOchhE7uOBIOR96K6pTeVF6G6@dpg-d7u5k9jtqb8s739tbsv0-a.oregon-postgres.render.com/user_crud_db_80ru
       - name: Build
         run: npm run build
